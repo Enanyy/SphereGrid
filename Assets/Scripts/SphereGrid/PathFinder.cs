@@ -68,6 +68,13 @@ public class PathFinder<T> where T : IEquatable<T>
             return false;
         }
 
+        if(result == null)
+        {
+            Debug.LogError("The param result is null.");
+
+            return false;
+        }
+
         result.Clear();
 
         mOpenList.Clear();
