@@ -10,7 +10,7 @@ public class SphereEntity : MonoBehaviour
 
     public Tile current;
 
-    public Stack<Tile> paths = new Stack<Tile>();
+    public List<Tile> paths = new List<Tile>();
 
     void Awake()
     {
@@ -31,7 +31,7 @@ public class SphereEntity : MonoBehaviour
         grid = tile.grid;
         if (current == null)
         {
-            paths.Push(tile);
+            paths.Add(tile);
         }
         else
         {
@@ -42,7 +42,7 @@ public class SphereEntity : MonoBehaviour
                 it.Current.SetDefaultColor();
             }
 #endif
-            paths = grid.FindPath(current, tile, (t) => { return grid.tilesType.ContainsKey(t.index) && grid.tilesType[t.index] == TileType.Free; });
+            grid.FindPath(ref paths, current, tile, (t) => { return grid.tilesType.ContainsKey(t.index) && grid.tilesType[t.index] == TileType.Free; });
 #if UNITY_EDITOR
 
             it = paths.GetEnumerator();
@@ -61,7 +61,7 @@ public class SphereEntity : MonoBehaviour
 
             if (paths.Count > 0)
             {
-                current = paths.Peek();
+                current = paths[0];
 
                 Vector3 destination = GetPathPoint(paths);
 
@@ -113,7 +113,7 @@ public class SphereEntity : MonoBehaviour
 #if UNITY_EDITOR
                     current.SetDefaultColor();
 #endif
-                    paths.Pop();
+                    paths.RemoveAt(0);
                 }
             }
         }
@@ -143,14 +143,13 @@ public class SphereEntity : MonoBehaviour
         }
     }
 
-    Vector3 GetPathPoint(Stack<Tile> paths)
+    Vector3 GetPathPoint(List<Tile> paths)
     {
         if (paths.Count > 1)
         {
-            var current = paths.Pop();
-            var next = paths.Peek();
-            paths.Push(current);
-
+            var current = paths[0];
+            var next = paths[1];
+           
             var it = next.neihbors.GetEnumerator();
             while (it.MoveNext())
             {
@@ -167,7 +166,7 @@ public class SphereEntity : MonoBehaviour
         }
         else if(paths.Count > 0)
         {
-            return paths.Peek().center;
+            return paths[0].center;
         }
 
         return  Vector3.zero;

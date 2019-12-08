@@ -11,7 +11,7 @@ public enum TileType{
     Free,     //空闲的
 }
 
-public class Tile
+public class Tile :IEquatable<Tile>
 {
     public struct Edge
     {
@@ -251,6 +251,10 @@ public class Tile
         }
     }
 
+    public bool Equals(Tile other)
+    {
+        return index == other.index;
+    }
 }
 public class SphereGrid
 {
@@ -647,44 +651,8 @@ public class SphereGrid
 
     #region FindPath
 
-    private class PathNode
-    {
-        public Tile tile;
-        public int h;
-        public int g;
-        public int f
-        {
-            get { return h + g; }
-        }
-        public Tile parent = null;
+    PathFinder<Tile> mPathFinder = new PathFinder<Tile>();
 
-        public void Clear()
-        {
-            h = 0;
-            g = 0;
-            parent = null;
-        }
-    }
-
-    private List<Tile> mOpenList = new List<Tile>();
-    private List<Tile> mCloseList = new List<Tile>();
-    private Dictionary<Tile, PathNode> mNodeDic = new Dictionary<Tile, PathNode>();
-
-    private PathNode GetNode(Tile t)
-    {
-        if (mNodeDic.ContainsKey(t) == false)
-        {
-            mNodeDic.Add(t, new PathNode
-            {
-                h = 0,
-                g = 0,
-                tile = t,
-                parent = null,
-            });
-        }
-
-        return mNodeDic[t];
-    }
     /// <summary>
     /// 网格寻路
     /// </summary>
@@ -692,108 +660,9 @@ public class SphereGrid
     /// <param name="to"></param>
     /// <param name="isValid">返回该tile是否可走</param>
     /// <returns></returns>
-    public Stack<Tile> FindPath(Tile from, Tile to, Func<Tile, bool> isValid)
+    public bool FindPath(ref List<Tile> result, Tile from, Tile to, Func<Tile, bool> isValid)
     {
-        Stack<Tile> result = new Stack<Tile>();
-
-        if (from == null || to == null || isValid == null)
-        {
-            Debug.LogError("参数不能为空");
-            return result;
-        }
-
-        mOpenList.Clear();
-        mCloseList.Clear();
-
-        var it = mNodeDic.GetEnumerator();
-        while (it.MoveNext())
-        {
-            it.Current.Value.Clear();
-        }
-
-
-        //将起点作为待处理的点放入开启列表，
-        mOpenList.Add(from);
-
-        //如果开启列表没有待处理点表示寻路失败，此路不通
-        while (mOpenList.Count > 0)
-        {
-            //遍历开启列表，找到消费最小的点作为检查点
-            Tile cur = mOpenList[0];
-
-            var curNode = GetNode(cur);
-
-            for (int i = 0; i < mOpenList.Count; i++)
-            {
-                var t = mOpenList[i];
-
-                var node = GetNode(t);
-
-                if (node.f < curNode.f && node.h < curNode.h)
-                {
-                    cur = mOpenList[i];
-                    curNode = node;
-                }
-            }
-
-
-            //从开启列表中删除检查点，把它加入到一个“关闭列表”，列表中保存所有不需要再次检查的方格。
-            mOpenList.Remove(cur);
-            mCloseList.Add(cur);
-
-            //检查是否找到终点
-            if (cur == to)
-            {
-                var tile = cur;
-                while (tile != null)
-                {
-                    result.Push(tile);
-                    var node = GetNode(tile);
-                    if (node != null)
-                    {
-                        tile = node.parent;
-                    }
-                    else
-                    {
-                        tile = null;
-                    }
-                }
-
-                break;
-            }
-
-            ////根据检查点来找到周围可行走的点
-            //1.如果是墙或者在关闭列表中则跳过
-            //2.如果点不在开启列表中则添加
-            //3.如果点在开启列表中且当前的总花费比之前的总花费小，则更新该点信息
-            
-            var nit = cur.neihbors.GetEnumerator();
-            while (nit.MoveNext())
-            {
-                var neighbour = nit.Current.Value;
-
-                if (isValid(neighbour) == false || mCloseList.Contains(neighbour))
-                    continue;
-
-                int cost = curNode.g + GetCostValue(neighbour, cur);
-
-                var neighborNode = GetNode(neighbour);
-
-                if (cost < neighborNode.g || !mOpenList.Contains(neighbour))
-                {
-                    neighborNode.g = cost;
-                    neighborNode.h = GetCostValue(neighbour, to);
-                    neighborNode.parent = cur;
-
-                    if (!mOpenList.Contains(neighbour))
-                    {
-                        mOpenList.Add(neighbour);
-                    }
-                }
-            }
-        }
-
-        return result;
+        return mPathFinder.FindPath(ref result, from, to, isValid, (tile) => { return tile.neihbors.Values.GetEnumerator(); }, GetCostValue);      
     }
     /// <summary>
     /// 获取格子权重
@@ -977,6 +846,16 @@ public class SphereGrid
 
         var grid = doc.CreateElement("Grid");
         doc.AppendChild(grid);
+
+        //半径属性
+        XmlAttribute attributeRadius = doc.CreateAttribute("radius");
+        attributeRadius.Value = radius.ToString();
+        grid.Attributes.Append(attributeRadius);
+        //递归次数
+        XmlAttribute attributeRecursion = doc.CreateAttribute("recursion");
+        attributeRecursion.Value = recursion.ToString();
+        grid.Attributes.Append(attributeRecursion);
+
         for (int i = 0; i < roots.Count; i++)
         {
             grid.AppendChild(roots[i].ToXml(grid));
@@ -1001,6 +880,8 @@ public class SphereGrid
         doc.LoadXml(xml);
 
         var grid = doc.DocumentElement;
+        radius = grid.GetAttribute("radius").ToInt32Ex();
+        recursion = grid.GetAttribute("recursion").ToInt32Ex();
 
         for (int i = 0; i < grid.ChildNodes.Count; ++i)
         {
@@ -1017,6 +898,8 @@ public class SphereGrid
     public string FormatTilesType()
     {
         StringBuilder builder = new StringBuilder();
+        builder.AppendFormat("{0},{1},", radius,recursion);
+
         var it = tilesType.GetEnumerator();
         while (it.MoveNext())
         {
@@ -1031,16 +914,28 @@ public class SphereGrid
 
     public void ParseTilesType(string text)
     {
-        string[] indexs = text.Split(';');
-        for (int i = 0; i < indexs.Length; i++)
+        string[] array = text.Split(',');
+        if(array.Length>=0)
         {
-            string[] str = indexs[i].Split(':');
-            if (str.Length == 2)
+            radius = array[0].ToInt32Ex();
+        }
+        if(array.Length >= 1)
+        {
+            recursion = array[1].ToInt32Ex();
+        }
+        if (array.Length >= 2)
+        {
+            string[] indexs = array[2].Split(';');
+            for (int i = 0; i < indexs.Length; i++)
             {
-                int index = str[0].ToInt32Ex();
-                if (tilesType.ContainsKey(index) == false)
+                string[] str = indexs[i].Split(':');
+                if (str.Length == 2)
                 {
-                    tilesType.Add(index, (TileType)str[1].ToInt32Ex());
+                    int index = str[0].ToInt32Ex();
+                    if (tilesType.ContainsKey(index) == false)
+                    {
+                        tilesType.Add(index, (TileType)str[1].ToInt32Ex());
+                    }
                 }
             }
         }
